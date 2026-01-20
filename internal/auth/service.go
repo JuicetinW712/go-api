@@ -36,20 +36,7 @@ func (auth *AuthService) Login(username string, password string) (TokenResponse,
 	}
 
 	// Generate tokens
-	accessToken, err := auth.GenerateToken(user, 3*time.Hour)
-	if err != nil {
-		return TokenResponse{}, fmt.Errorf("generating access token: %w", err)
-	}
-
-	refreshToken, err := auth.GenerateToken(user, 7*24*time.Hour)
-	if err != nil {
-		return TokenResponse{}, fmt.Errorf("generating refresh token: %w", err)
-	}
-
-	return TokenResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-	}, nil
+	return auth.generateAccessAndRefreshTokens(user)
 }
 
 func (auth *AuthService) Register(info LoginInfo) error {
@@ -79,7 +66,42 @@ func (auth *AuthService) Register(info LoginInfo) error {
 	return nil
 }
 
-func (auth *AuthService) GenerateToken(user AuthUser, duration time.Duration) (string, error) {
+func (auth *AuthService) RefreshToken(tokenStr string) {
+	// Validate and parse the existing token
+
+	// Generate a new token with extended expiration
+}
+
+func (auth *AuthService) GetUserInfo(tokenStr string) (User, error) {
+	claims := &UserClaims{}
+
+	// Validates HMAC signature, issuer, and expiration time
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(tk *jwt.Token) (any, error) {
+		if _, ok := tk.Method.(*jwt.SigningMethodHMAC); !ok {
+			return User{}, jwt.ErrSignatureInvalid
+		}
+		return auth.secretKey, nil
+	},
+		jwt.WithIssuer(auth.issuer),
+		jwt.WithExpirationRequired(),
+	)
+
+	if err != nil || !token.Valid {
+		return User{}, err
+	}
+
+	if claims.ExpiresAt.Time.Before(time.Now()) {
+		return User{}, fmt.Errorf("expired JWT")
+	}
+
+	return User{
+		ID:       claims.ID,
+		Username: claims.Username,
+		Email:    claims.Email,
+	}, nil
+}
+
+func (auth *AuthService) generateToken(user AuthUser, duration time.Duration) (string, error) {
 	claims := UserClaims{
 		Username: user.Username,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -99,33 +121,19 @@ func (auth *AuthService) GenerateToken(user AuthUser, duration time.Duration) (s
 	return tokenStr, nil
 }
 
-func (auth *AuthService) RefreshToken(tokenStr string) {
-	// Validate and parse the existing token
-
-	// Generate a new token with extended expiration
-}
-
-func (auth *AuthService) GetUserInfo(tokenStr string) (*UserClaims, error) {
-	claims := &UserClaims{}
-
-	// Validates HMAC signature, issuer, and expiration time
-	token, err := jwt.ParseWithClaims(tokenStr, claims, func(tk *jwt.Token) (any, error) {
-		if _, ok := tk.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, jwt.ErrSignatureInvalid
-		}
-		return auth.secretKey, nil
-	},
-		jwt.WithIssuer(auth.issuer),
-		jwt.WithExpirationRequired(),
-	)
-
-	if err != nil || !token.Valid {
-		return nil, err
+func (auth *AuthService) generateAccessAndRefreshTokens(user AuthUser) (TokenResponse, error) {
+	accessToken, err := auth.generateToken(user, 3*time.Hour)
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("generating access token: %w", err)
 	}
 
-	if claims.ExpiresAt.Time.Before(time.Now()) {
-		return nil, fmt.Errorf("expired JWT")
+	refreshToken, err := auth.generateToken(user, 7*24*time.Hour)
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("generating refresh token: %w", err)
 	}
 
-	return claims, nil
+	return TokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	}, nil
 }
