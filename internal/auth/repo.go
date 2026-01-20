@@ -1,12 +1,17 @@
 package auth
 
-type AuthRepo struct {
+type AuthRepository struct{}
+
+func NewAuthRepository() *AuthRepository {
+	return &AuthRepository{}
 }
 
-func (*AuthRepo) RegisterAuthUser() {
-
+// TODO - implement
+func (ar *AuthRepository) CreateUser(user AuthUser) error {
+	return nil
 }
 
-func (*AuthRepo) ValidateAuthUser() {
-
+// TODO - implement
+func (ar *AuthRepository) GetUser(username string) (AuthUser, error) {
+	return AuthUser{}, nil
 }

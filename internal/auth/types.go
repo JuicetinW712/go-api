@@ -3,19 +3,30 @@ package auth
 import "github.com/golang-jwt/jwt/v5"
 
 type UserClaims struct {
+	ID       string `json:"id"`
 	Username string `json:"username"`
-	Role     string `json:"role"`
+	Email    string `json:"email"`
+
 	jwt.RegisteredClaims
 }
 
 type LoginInfo struct {
 	Username string
 	Password string
+	Email    string
 }
 
 type AuthUser struct {
-	ID       string
-	Username string
+	ID           string
+	Username     string
+	Email        string
+	PasswordHash string
+}
+
+type User struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
 }
 
 type TokenResponse struct {
@@ -24,14 +35,14 @@ type TokenResponse struct {
 }
 
 type IAuthService interface {
-	Login(loginInfo LoginInfo) string
-	Register(loginInfo LoginInfo) string
+	Login(username string, password string) (TokenResponse, error)
+	Register(info LoginInfo) error
 	GenerateToken(username string, role string) (string, error)
 	RefreshToken(tokenStr string)
-	ValidateToken(tokenStr string) (*UserClaims, error)
+	GetUserInfo(tokenStr string) (User, error)
 }
 
 type IAuthRepo interface {
-	RegisterAuthUser(loginInfo LoginInfo)
-	ValidateAuthUser(loginInfo LoginInfo) bool
+	CreateUser(user AuthUser) error
+	GetUser(username string) (AuthUser, error)
 }

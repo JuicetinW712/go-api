@@ -1,46 +1,91 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthService struct {
 	issuer    string
 	secretKey string
-	authRepo  IAuthRepo
+	repo      IAuthRepo
 }
 
 func NewAuthService(issuer string, secretKey string, authRepo IAuthRepo) *AuthService {
-	return &AuthService{
-		issuer,
-		secretKey,
-		authRepo,
+	return &AuthService{issuer, secretKey, authRepo}
+}
+
+func (auth *AuthService) Login(username string, password string) (TokenResponse, error) {
+	// Get user from db
+	user, err := auth.repo.GetUser(username)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return TokenResponse{}, ErrInvalidCredentials
+		}
+		return TokenResponse{}, fmt.Errorf("getting user: %w", err)
 	}
+
+	// Validate password
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return TokenResponse{}, ErrInvalidCredentials
+	}
+
+	// Generate tokens
+	accessToken, err := auth.GenerateToken(user, 3*time.Hour)
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("generating access token: %w", err)
+	}
+
+	refreshToken, err := auth.GenerateToken(user, 7*24*time.Hour)
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("generating refresh token: %w", err)
+	}
+
+	return TokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	}, nil
 }
 
-func (auth *AuthService) Login(loginInfo LoginInfo) TokenResponse {
-	// loginInfo.Password =
+func (auth *AuthService) Register(info LoginInfo) error {
+	// Encrypt password
+	data := []byte(info.Password)
+	encryptedPassword, err := bcrypt.GenerateFromPassword(data, bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hashing password: %w", err)
+	}
 
-	// 	auth.authRepo.ValidateAuthUser(loginInfo)
-	return TokenResponse{}
+	// Create user
+	user := AuthUser{
+		ID:           uuid.New().String(),
+		Username:     info.Username,
+		Email:        info.Email,
+		PasswordHash: string(encryptedPassword),
+	}
+	err = auth.repo.CreateUser(user)
+
+	if err != nil {
+		if errors.Is(err, errDbDuplicateKey) {
+			return ErrConflict
+		}
+		return fmt.Errorf("creating auth user: %w", err)
+	}
+
+	return nil
 }
 
-func (auth *AuthService) Register(loginInfo LoginInfo) bool {
-
-}
-
-func (auth *AuthService) GenerateAccessToken(user AuthUser) (string, error) {
+func (auth *AuthService) GenerateToken(user AuthUser, duration time.Duration) (string, error) {
 	claims := UserClaims{
 		Username: user.Username,
-		Role:     "role",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.Username,
 			Issuer:    auth.issuer,
-			Audience:  jwt.ClaimStrings{"role"},
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(3 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
@@ -54,13 +99,16 @@ func (auth *AuthService) GenerateAccessToken(user AuthUser) (string, error) {
 	return tokenStr, nil
 }
 
-func (auth *AuthService) RefreshToken(refreshTkn string) {
+func (auth *AuthService) RefreshToken(tokenStr string) {
+	// Validate and parse the existing token
 
+	// Generate a new token with extended expiration
 }
 
-func (auth *AuthService) ValidateToken(tokenStr string) (*UserClaims, error) {
+func (auth *AuthService) GetUserInfo(tokenStr string) (*UserClaims, error) {
 	claims := &UserClaims{}
 
+	// Validates HMAC signature, issuer, and expiration time
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(tk *jwt.Token) (any, error) {
 		if _, ok := tk.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
