@@ -15,9 +15,9 @@ func NewServer(
 	userRepo *repositories.UserRepository,
 ) http.Handler {
 	// Add services and handlers
-	userService := services.NewUserService(userRepo)
-	authService := auth.NewAuthService("issuer", "key")
-	authMiddleware := middleware.AuthMiddleware(authService)
+	// userService := services.NewUserService(userRepo)
+	// authService := auth.NewAuthService("issuer", "key")
+	// authMiddleware := middleware.AuthMiddleware(authService)
 
 	r := chi.NewRouter()
 	r.Route("/api", func(r chi.Router) {

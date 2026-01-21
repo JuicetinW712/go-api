@@ -36,7 +36,12 @@ func (auth *AuthService) Login(username string, password string) (TokenResponse,
 	}
 
 	// Generate tokens
-	return auth.generateAccessAndRefreshTokens(user)
+	tokens, err := auth.generateAccessAndRefreshTokens(user)
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("generating tokens: %w", err)
+	}
+
+	return tokens, nil
 }
 
 func (auth *AuthService) Register(info LoginInfo) error {
@@ -78,7 +83,7 @@ func (auth *AuthService) GetUserInfo(tokenStr string) (User, error) {
 	// Validates HMAC signature, issuer, and expiration time
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(tk *jwt.Token) (any, error) {
 		if _, ok := tk.Method.(*jwt.SigningMethodHMAC); !ok {
-			return User{}, jwt.ErrSignatureInvalid
+			return nil, fmt.Errorf("unexpected signing method: %v", tk.Header["alg"])
 		}
 		return auth.secretKey, nil
 	},
@@ -86,12 +91,8 @@ func (auth *AuthService) GetUserInfo(tokenStr string) (User, error) {
 		jwt.WithExpirationRequired(),
 	)
 
-	if err != nil || !token.Valid {
-		return User{}, err
-	}
-
-	if claims.ExpiresAt.Time.Before(time.Now()) {
-		return User{}, fmt.Errorf("expired JWT")
+	if err != nil || !token.Valid || claims.ExpiresAt.Time.Before(time.Now()) {
+		return User{}, ErrInvalidCredentials
 	}
 
 	return User{

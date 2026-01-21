@@ -1,9 +1,15 @@
 package auth
 
-type AuthRepository struct{}
+import (
+	"database/sql"
+)
 
-func NewAuthRepository() *AuthRepository {
-	return &AuthRepository{}
+type AuthRepository struct{
+	db *sql.DB
+}
+
+func NewAuthRepository(db *sql.DB) *AuthRepository {
+	return &AuthRepository{db}
 }
 
 // TODO - implement
