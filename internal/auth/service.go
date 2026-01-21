@@ -10,6 +10,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var REFRESH_TOKEN_DURATION = 7 * 24 * time.Hour
+var ACCESS_TOKEN_DURATION = 3 * time.Hour
+
 type AuthService struct {
 	issuer    string
 	secretKey string
@@ -36,7 +39,11 @@ func (auth *AuthService) Login(username string, password string) (TokenResponse,
 	}
 
 	// Generate tokens
-	tokens, err := auth.generateAccessAndRefreshTokens(user)
+	tokens, err := auth.generateAccessAndRefreshTokens(User{
+		ID:       user.ID,
+		Username: user.Username,
+		Email:    user.Email,
+	})
 	if err != nil {
 		return TokenResponse{}, fmt.Errorf("generating tokens: %w", err)
 	}
@@ -71,13 +78,23 @@ func (auth *AuthService) Register(info LoginInfo) error {
 	return nil
 }
 
-func (auth *AuthService) RefreshToken(tokenStr string) {
+func (auth *AuthService) RefreshToken(tokenStr string) (TokenResponse, error) {
 	// Validate and parse the existing token
+	user, err := auth.GetUser(tokenStr)
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("validating token: %w", err)
+	}
 
 	// Generate a new token with extended expiration
+	token, err := auth.generateAccessAndRefreshTokens(user)
+	if err != nil {
+		return TokenResponse{}, fmt.Errorf("generating new token: %w", err)
+	}
+
+	return token, nil
 }
 
-func (auth *AuthService) GetUserInfo(tokenStr string) (User, error) {
+func (auth *AuthService) GetUser(tokenStr string) (User, error) {
 	claims := &UserClaims{}
 
 	// Validates HMAC signature, issuer, and expiration time
@@ -102,9 +119,11 @@ func (auth *AuthService) GetUserInfo(tokenStr string) (User, error) {
 	}, nil
 }
 
-func (auth *AuthService) generateToken(user AuthUser, duration time.Duration) (string, error) {
+func (auth *AuthService) generateToken(user User, duration time.Duration) (string, error) {
 	claims := UserClaims{
+		ID:       user.ID,
 		Username: user.Username,
+		Email:    user.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.Username,
 			Issuer:    auth.issuer,
@@ -122,13 +141,13 @@ func (auth *AuthService) generateToken(user AuthUser, duration time.Duration) (s
 	return tokenStr, nil
 }
 
-func (auth *AuthService) generateAccessAndRefreshTokens(user AuthUser) (TokenResponse, error) {
-	accessToken, err := auth.generateToken(user, 3*time.Hour)
+func (auth *AuthService) generateAccessAndRefreshTokens(user User) (TokenResponse, error) {
+	accessToken, err := auth.generateToken(user, ACCESS_TOKEN_DURATION)
 	if err != nil {
 		return TokenResponse{}, fmt.Errorf("generating access token: %w", err)
 	}
 
-	refreshToken, err := auth.generateToken(user, 7*24*time.Hour)
+	refreshToken, err := auth.generateToken(user, REFRESH_TOKEN_DURATION)
 	if err != nil {
 		return TokenResponse{}, fmt.Errorf("generating refresh token: %w", err)
 	}

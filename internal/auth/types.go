@@ -37,8 +37,7 @@ type TokenResponse struct {
 type IAuthService interface {
 	Login(username string, password string) (TokenResponse, error)
 	Register(info LoginInfo) error
-	GenerateToken(username string, role string) (string, error)
-	RefreshToken(tokenStr string)
+	RefreshToken(tokenStr string) (string, error)
 	GetUserInfo(tokenStr string) (User, error)
 }
 
